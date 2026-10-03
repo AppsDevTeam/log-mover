@@ -9,6 +9,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Schema\Table;
+use Doctrine\DBAL\Types\JsonType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManagerInterface;
@@ -161,9 +162,18 @@ class PrintSchemaCommand extends Command
 		return match (true) {
 			$type === Types::DATETIME_MUTABLE => Types::DATETIMETZ_MUTABLE,
 			$type === Types::DATETIME_IMMUTABLE => Types::DATETIMETZ_IMMUTABLE,
-			$type === Types::JSON => Type::hasType('jsonb') ? 'jsonb' : $type,
+			$this->isJson($type) => Type::hasType('jsonb') ? 'jsonb' : $type,
 			default => $type,
 		};
+	}
+
+	/**
+	 * Any JSON type, including custom ones built on JsonType (e.g. doctrine-loggable's
+	 * `change_set`) - they store the same JSON, only (de)serialize it differently.
+	 */
+	private function isJson(string $type): bool
+	{
+		return Type::hasType($type) && Type::getType($type) instanceof JsonType;
 	}
 
 	/**

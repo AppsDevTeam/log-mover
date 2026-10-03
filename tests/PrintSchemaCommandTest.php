@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace ADT\LogMover\Tests;
 
 use ADT\LogMover\Console\PrintSchemaCommand;
+use ADT\LogMover\Tests\Fixtures\JsonSubtype;
 use ADT\LogMover\Tests\Fixtures\SchemaConnection;
 use ADT\LogMover\Tests\Fixtures\TestAuditLog;
 use ADT\LogMover\Tests\Fixtures\TestEntityManager;
 use ADT\LogMover\Tests\Fixtures\TestRequestLog;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
+use Doctrine\DBAL\Types\Type;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Tester\CommandTester;
@@ -73,6 +75,19 @@ final class PrintSchemaCommandTest extends TestCase
 		self::assertStringContainsString('payload JSONB', $sql);
 		self::assertStringContainsString('created_by JSONB', $sql);
 		self::assertDoesNotMatchRegularExpression('~ JSON(,|\s|\))~', $sql);
+	}
+
+	public function testCustomJsonTypeIsJsonbToo(): void
+	{
+		// Regression: doctrine-loggable maps change_log.change_set with its own type built
+		// on JsonType, and only the exact `json` type used to become JSONB.
+		if (!Type::hasType('test_json_subtype')) {
+			Type::addType('test_json_subtype', JsonSubtype::class);
+		}
+
+		$sql = $this->printSchema([['entity' => TestAuditLog::class]], extraField: ['fieldName' => 'changeSet', 'type' => 'test_json_subtype', 'columnName' => 'change_set']);
+
+		self::assertStringContainsString('change_set JSONB NOT NULL', $sql);
 	}
 
 	public function testJsonStaysJsonInMySqlTarget(): void
@@ -176,7 +191,8 @@ final class PrintSchemaCommandTest extends TestCase
 	}
 
 	/** @param list<array<string, mixed>> $tables */
-	private function printSchema(array $tables, ?SchemaConnection $target = null): string
+	/** @param array<string, mixed>|null $extraField additional field mapped on TestAuditLog */
+	private function printSchema(array $tables, ?SchemaConnection $target = null, ?array $extraField = null): string
 	{
 		// the command reads only metadata, it does not touch the source database
 		$em = new TestEntityManager();
@@ -191,6 +207,9 @@ final class PrintSchemaCommandTest extends TestCase
 		$meta->mapField(['fieldName' => 'correlationId', 'type' => 'string', 'length' => 255, 'nullable' => true, 'columnName' => 'correlation_id']);
 		$meta->mapField(['fieldName' => 'createdBy', 'type' => 'json', 'nullable' => true, 'columnName' => 'created_by']);
 		$meta->mapField(['fieldName' => 'payload', 'type' => 'json', 'nullable' => true, 'options' => ['jsonb' => true]]);
+		if ($extraField !== null) {
+			$meta->mapField($extraField);
+		}
 		$meta->table['indexes'] = ['audit_log_action' => ['columns' => ['action']]];
 
 		$meta = $em->getClassMetadata(TestRequestLog::class);
