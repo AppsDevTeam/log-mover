@@ -71,9 +71,11 @@ class LogMoverExtension extends CompilerExtension
 			'queue' => Expect::structure([
 				// null = on when the project has a BackgroundQueue service, true = require it
 				'enabled' => Expect::bool()->nullable()->default(null),
-				// queue name and priority of the callback, as in backgroundQueue.callbacks
+				// queue name and priority of the callback, as in backgroundQueue.callbacks -
+				// validated the same way here, because the callback is added after the
+				// backgroundQueue extension has validated its own config
 				'name' => Expect::string()->nullable()->default(null),
-				'priority' => Expect::int()->nullable()->default(null),
+				'priority' => Expect::int()->min(1)->nullable()->default(null),
 			]),
 		]);
 	}

@@ -141,6 +141,21 @@ final class LogMoverExtensionTest extends TestCase
 		self::assertFalse($container->hasService('logMover.scheduleCommand'));
 	}
 
+	public function testQueuePriorityIsValidatedLikeBackgroundQueueDoes(): void
+	{
+		// background-queue-nette requires priority >= 1, but our callback bypasses its schema
+		$this->expectException(InvalidConfigurationException::class);
+
+		$this->createContainer(self::QUEUE_SERVICE . <<<'NEON'
+			logMover:
+				target: @target
+				queue:
+					priority: 0
+				tables:
+					- {entity: ADT\LogMover\Tests\Fixtures\TestAuditLog}
+			NEON);
+	}
+
 	public function testRequiredQueueWithoutServiceFailsTheCompilation(): void
 	{
 		$this->expectException(InvalidConfigurationException::class);
