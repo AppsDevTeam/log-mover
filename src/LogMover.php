@@ -50,8 +50,13 @@ class LogMover
 {
 	public const int BATCH_SIZE = 1000;
 
-	/** Callback name and job identifier in adt/background-queue, see LogMoverExtension. */
-	public const string QUEUE_CALLBACK = 'logMover';
+	/**
+	 * Callback name and job identifier in adt/background-queue, see LogMoverExtension.
+	 * Named like a project callback would be (`moveLogs`), so a project that had its own
+	 * job under this name switches over without touching the queue - the new callback
+	 * simply takes over the job that is already there.
+	 */
+	public const string QUEUE_CALLBACK = 'moveLogs';
 
 	private readonly Connection $sourceConnection;
 

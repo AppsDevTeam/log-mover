@@ -75,7 +75,7 @@ not by postponing the move.
 ### With adt/background-queue (recommended)
 
 When the project has a `BackgroundQueue` service, the extension registers everything itself:
-the queue callback (`logMover` → `LogMover::moveAllOrFail()`) and the `log-mover:schedule`
+the queue callback (`moveLogs` → `LogMover::moveAllOrFail()`) and the `log-mover:schedule`
 command. The project adds only a cron line - no job class, no entry in
 `backgroundQueue.callbacks`:
 
@@ -88,6 +88,10 @@ The job is **recurring**: once it finishes, the queue schedules it again right a
 starts it - after a deploy or a permanent failure; while a job is unfinished it publishes
 nothing. A failed move is retried with a growing delay (1, 2, 4, 8, 16 minutes), reported
 by mail after `notifyOnNumberOfAttempts` and shown in `background-queue:monitor`.
+
+Switching from a project's own job under the same name (`moveLogs`) needs no queue cleanup:
+remove the project callback from `backgroundQueue.callbacks` (the extension refuses to
+compile while both exist) and the new callback takes over the job already in the queue.
 
 ```neon
 logMover:

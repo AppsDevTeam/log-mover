@@ -176,7 +176,7 @@ final class LogMoverExtensionTest extends TestCase
 		$this->expectException(InvalidConfigurationException::class);
 		$this->expectExceptionMessage('already defined');
 
-		$this->createContainer(str_replace('callbacks: [sendEmail: [@appConnection, close]]', 'callbacks: [sendEmail: [@appConnection, close], logMover: [@appConnection, close]]', self::QUEUE_SERVICE) . <<<'NEON'
+		$this->createContainer(str_replace('callbacks: [sendEmail: [@appConnection, close]]', 'callbacks: [sendEmail: [@appConnection, close], moveLogs: [@appConnection, close]]', self::QUEUE_SERVICE) . <<<'NEON'
 			logMover:
 				target: @target
 				tables:
