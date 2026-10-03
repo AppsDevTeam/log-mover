@@ -201,6 +201,30 @@ final class LogMoverTest extends TestCase
 		self::assertSame([], $emConnection->queries);
 	}
 
+	public function testMoveAllOrFailThrowsWhenATableFailed(): void
+	{
+		// For a queue job: it must fail so that the queue retries it and reports it.
+		$source = new SourceConnection([[self::auditRow(1)]]);
+		$target = new TargetConnection(failOnInsert: true);
+
+		try {
+			$this->createMover($source, $target)->moveAllOrFail();
+			self::fail('Expected an exception.');
+		} catch (\RuntimeException $e) {
+			self::assertStringContainsString('audit_log: target is unavailable', $e->getMessage());
+			self::assertSame('target is unavailable', $e->getPrevious()?->getMessage());
+		}
+	}
+
+	public function testMoveAllOrFailIsQuietWhenEverythingMoved(): void
+	{
+		$target = new TargetConnection();
+
+		$this->createMover(new SourceConnection([[self::auditRow(1)], []]), $target)->moveAllOrFail();
+
+		self::assertCount(1, $target->inserted);
+	}
+
 	public function testEndToEndOnRealDatabases(): void
 	{
 		// Stubs above check the order of operations; this checks the SQL actually runs and

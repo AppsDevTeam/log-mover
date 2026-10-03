@@ -72,20 +72,40 @@ not by postponing the move.
 
 ## Running
 
+### With adt/background-queue (recommended)
+
+When the project has a `BackgroundQueue` service, the extension registers everything itself:
+the queue callback (`logMover` → `LogMover::moveAllOrFail()`) and the `log-mover:schedule`
+command. The project adds only a cron line - no job class, no entry in
+`backgroundQueue.callbacks`:
+
+```
+* * * * * php bin/console log-mover:schedule
+```
+
+The job is **recurring**: once it finishes, the queue schedules it again right away (after
+`waitingJobExpiration`, a second by default), so logs are moved within seconds. Cron only
+starts it - after a deploy or a permanent failure; while a job is unfinished it publishes
+nothing. A failed move is retried with a growing delay (1, 2, 4, 8, 16 minutes), reported
+by mail after `notifyOnNumberOfAttempts` and shown in `background-queue:monitor`.
+
+```neon
+logMover:
+	queue:
+		enabled: true    # null (default) = when a BackgroundQueue service exists, false = never
+		name: logs       # queue name of the callback, as in backgroundQueue.callbacks
+		priority: null
+```
+
+### Without a queue
+
 ```bash
 php bin/console log-mover:move              # --dry-run, --batch-size, --limit
 ```
 
-In production run it from a queue every minute rather than from cron — `LogMover` is a
-service:
-
-```php
-$result = $this->logMover->moveAll();
-if ($result['errors']) {
-	// fail the job so it is retried and somebody notices
-	throw new RuntimeException(implode('; ', array_map(fn ($e) => $e->getMessage(), $result['errors'])));
-}
-```
+From cron every minute. Overlapping runs are safe (the duplicate key stops the second
+write), only wasteful. `LogMover` is a service, `moveAllOrFail()` throws when any table
+failed - use it from your own job runner.
 
 An unavailable or broken table fails only its own row; the others are moved.
 

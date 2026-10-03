@@ -19,7 +19,11 @@
 		"symfony/console": "^6.4 || ^7.0 || ^8.0"
 	},
 	"require-dev": {
-		"phpunit/phpunit": "^11.5 || ^12.0 || ^13.0"
+		"phpunit/phpunit": "^11.5 || ^12.0 || ^13.0",
+		"adt/background-queue": "^5.8"
+	},
+	"suggest": {
+		"adt/background-queue": "Runs the move as a recurring queue job via log-mover:schedule (callback registered by LogMoverExtension)"
 	},
 	"autoload": {
 		"psr-4": {

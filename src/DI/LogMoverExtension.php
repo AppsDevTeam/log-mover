@@ -6,17 +6,21 @@ namespace ADT\LogMover\DI;
 
 use ADT\LogMover\Console\MoveCommand;
 use ADT\LogMover\Console\PrintSchemaCommand;
+use ADT\LogMover\Console\ScheduleCommand;
 use ADT\LogMover\LogMover;
 use Doctrine\ORM\EntityManagerInterface;
 use Nette\DI\CompilerExtension;
+use Nette\DI\Definitions\ServiceDefinition;
+use Nette\DI\InvalidConfigurationException;
 use Nette\DI\Definitions\Reference;
 use Nette\DI\Definitions\Statement;
 use Nette\Schema\Expect;
 use Nette\Schema\Schema;
 
 /**
- * Registers LogMover as a service (it also runs from a queue, not only from the command)
- * and both commands.
+ * Registers LogMover and its commands. With adt/background-queue in the project it also
+ * registers the queue callback and log-mover:schedule - the project then only adds that
+ * command to cron, it writes no job class and no callback of its own.
  *
  * ```neon
  * extensions:
@@ -25,12 +29,15 @@ use Nette\Schema\Schema;
  * logMover:
  *     target: @nettrine.dbal.connections.logdb.connection
  *     tables:
- *         - {entity: App\Model\Entities\RequestLogBody, hot: '7 days', retention: '1 month'}
- *         - {entity: App\Model\Entities\RequestLog, hot: '1 month', retention: '6 months'}
+ *         - {entity: App\Model\Entities\RequestLogBody, hot: '1 month', retention: '1 month'}
+ *         - {entity: App\Model\Entities\RequestLog, hot: '3 months', retention: '6 months'}
  * ```
  */
 class LogMoverExtension extends CompilerExtension
 {
+	/** adt/background-queue is optional - referenced by name so the class need not exist */
+	private const string QUEUE_CLASS = 'ADT\\BackgroundQueue\\BackgroundQueue';
+
 	public function getConfigSchema(): Schema
 	{
 		$service = Expect::anyOf(Expect::string(), Expect::type(Statement::class));
@@ -60,6 +67,14 @@ class LogMoverExtension extends CompilerExtension
 				// so `false` means it gets INSERT only - the case of an audit trail.
 				'readable' => Expect::bool()->default(true),
 			])->castTo('array'))->min(1),
+			// adt/background-queue integration (callback + log-mover:schedule).
+			'queue' => Expect::structure([
+				// null = on when the project has a BackgroundQueue service, true = require it
+				'enabled' => Expect::bool()->nullable()->default(null),
+				// queue name and priority of the callback, as in backgroundQueue.callbacks
+				'name' => Expect::string()->nullable()->default(null),
+				'priority' => Expect::int()->nullable()->default(null),
+			]),
 		]);
 	}
 
@@ -88,5 +103,60 @@ class LogMoverExtension extends CompilerExtension
 				'config' => $config->tables,
 			])
 			->setAutowired(false);
+
+		// Here, not in beforeCompile: contributte/console collects commands in its own
+		// beforeCompile, and which extension goes first depends on the project config.
+		// The queue is an optional argument, so a project with adt/background-queue
+		// installed but not registered still compiles.
+		if ($config->queue->enabled !== false && class_exists(self::QUEUE_CLASS)) {
+			$builder->addDefinition($this->prefix('scheduleCommand'))
+				->setFactory(ScheduleCommand::class)
+				->setAutowired(false);
+		}
+	}
+
+	/**
+	 * The queue callback goes straight into the BackgroundQueue service's `config` argument.
+	 * Callbacks normally come from the backgroundQueue section of the project config, which
+	 * another extension cannot add to - but by now that extension has turned the section
+	 * into the service definition, and the definition can be completed.
+	 */
+	public function beforeCompile(): void
+	{
+		$builder = $this->getContainerBuilder();
+		$queue = $this->config->queue;
+
+		if ($queue->enabled === false) {
+			return;
+		}
+
+		$queueClass = 'ADT\BackgroundQueue\BackgroundQueue';
+		$name = class_exists($queueClass) ? $builder->getByType($queueClass) : null;
+		$definition = $name !== null ? $builder->getDefinition($name) : null;
+
+		if (!$definition instanceof ServiceDefinition) {
+			if ($queue->enabled === true) {
+				throw new InvalidConfigurationException('logMover.queue.enabled requires adt/background-queue with a registered BackgroundQueue service.');
+			}
+
+			return;
+		}
+
+		$factory = $definition->getFactory();
+		$arguments = $factory->arguments;
+		$key = array_key_exists('config', $arguments) ? 'config' : 0;
+		$queueConfig = $arguments[$key] ?? [];
+
+		if (isset($queueConfig['callbacks'][LogMover::QUEUE_CALLBACK])) {
+			throw new InvalidConfigurationException(sprintf('Background queue callback "%s" is already defined; logMover registers it itself - remove it from backgroundQueue.callbacks.', LogMover::QUEUE_CALLBACK));
+		}
+
+		$queueConfig['callbacks'][LogMover::QUEUE_CALLBACK] = [
+			'callback' => [new Reference($this->prefix('logMover')), 'moveAllOrFail'],
+			'queue' => $queue->name,
+			'priority' => $queue->priority,
+		];
+		$arguments[$key] = $queueConfig;
+		$definition->setArguments($arguments);
 	}
 }

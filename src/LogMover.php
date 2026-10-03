@@ -9,6 +9,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Platforms\SQLitePlatform;
 use Doctrine\ORM\EntityManagerInterface;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -48,6 +49,9 @@ use Throwable;
 class LogMover
 {
 	public const int BATCH_SIZE = 1000;
+
+	/** Callback name and job identifier in adt/background-queue, see LogMoverExtension. */
+	public const string QUEUE_CALLBACK = 'logMover';
 
 	private readonly Connection $sourceConnection;
 
@@ -98,6 +102,31 @@ class LogMover
 		}
 
 		return ['moved' => $moved, 'errors' => $errors];
+	}
+
+	/**
+	 * moveAll() for a queue job: fails when any table failed.
+	 *
+	 * Tables that went through are moved already - the next run skips them. But the job must
+	 * fail, so that the queue retries it and background-queue:monitor reports it. Otherwise
+	 * the move would silently stop and nobody would notice until logs stopped appearing.
+	 *
+	 * @throws RuntimeException
+	 */
+	public function moveAllOrFail(): void
+	{
+		$result = $this->moveAll();
+
+		if (!$result['errors']) {
+			return;
+		}
+
+		$messages = [];
+		foreach ($result['errors'] as $_table => $_error) {
+			$messages[] = $_table . ': ' . $_error->getMessage();
+		}
+
+		throw new RuntimeException('Log move failed - ' . implode('; ', $messages), 0, reset($result['errors']));
 	}
 
 	/**

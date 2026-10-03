@@ -33,3 +33,4 @@ Tests need no database server - order-of-operations tests use stub connections, 
 - **`created_at` gets `+00:00`.** Sources write UTC without a zone; a `TIMESTAMPTZ` target would otherwise read it in its own zone.
 - **Printed time precision.** DBAL declares PostgreSQL timestamps as `TIMESTAMP(0)`; the schema printout overrides it with a full column definition (`TIMESTAMP(6) WITH TIME ZONE`), which means it has to add `NOT NULL` itself.
 - **One target per source.** Ids come from the source; the printout and README say so - keep it that way.
+- **Queue integration is optional.** `adt/background-queue` is only `suggest`/`require-dev`; the extension references its class by name and registers `log-mover:schedule` in `loadConfiguration` (contributte/console collects commands in its own `beforeCompile`, which may run first), while the queue callback is injected into the `BackgroundQueue` service's `config` argument in `beforeCompile`.
