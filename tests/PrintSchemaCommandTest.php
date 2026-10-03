@@ -63,13 +63,24 @@ final class PrintSchemaCommandTest extends TestCase
 		self::assertMatchesRegularExpression('~processed_at TIMESTAMP\(6\) WITH TIME ZONE(,|\s*\))~', $sql);
 	}
 
-	public function testJsonbOptionIsHonouredInPostgresTarget(): void
+	public function testJsonIsJsonbInPostgresTarget(): void
 	{
-		// MySQL ignores the option, so the source has plain JSON; the target is where it matters.
+		// Payloads are searched during incidents; JSONB can be indexed and queried without
+		// re-parsing every row. Regardless of whether the entity asks for it - the request
+		// logger trait maps plain `json`.
 		$sql = $this->printSchema([['entity' => TestAuditLog::class]]);
 
 		self::assertStringContainsString('payload JSONB', $sql);
-		self::assertMatchesRegularExpression('~created_by JSON(,|\s)~', $sql);
+		self::assertStringContainsString('created_by JSONB', $sql);
+		self::assertDoesNotMatchRegularExpression('~ JSON(,|\s|\))~', $sql);
+	}
+
+	public function testJsonStaysJsonInMySqlTarget(): void
+	{
+		$sql = $this->printSchema([['entity' => TestAuditLog::class]], new SchemaConnection(platform: new MySQLPlatform()));
+
+		self::assertStringContainsString('created_by JSON', $sql);
+		self::assertStringNotContainsString('JSONB', $sql);
 	}
 
 	public function testEmptyDatabaseNameIsVisibleInThePrintout(): void

@@ -103,7 +103,7 @@ class PrintSchemaCommand extends Command
 			$mapping = $meta->getFieldMapping($_field);
 			$notNull = !($mapping['nullable'] ?? false);
 
-			$table->addColumn($meta->getColumnName($_field), $this->resolveType($mapping['type'], $mapping['options'] ?? [], $isPostgres), array_filter([
+			$table->addColumn($meta->getColumnName($_field), $this->resolveType($mapping['type'], $isPostgres), array_filter([
 				'notnull' => $notNull,
 				'length' => $mapping['length'] ?? null,
 				'precision' => $mapping['precision'] ?? null,
@@ -145,12 +145,14 @@ class PrintSchemaCommand extends Command
 	 * a zone it is unambiguous even a year later. MySQL has no zone on DATETIME, so the
 	 * original type stays there.
 	 *
-	 * JSONB on PostgreSQL where the entity asks for it (`options: ['jsonb' => true]`): the
-	 * source is usually MySQL, which ignores the option, so it only matters here.
-	 *
-	 * @param array<string, mixed> $options
+	 * JSON is always JSONB on PostgreSQL. Incidents are investigated by searching inside
+	 * payloads ("every request whose body carried terminal X") - JSONB can be indexed (GIN)
+	 * and queried with `@>` without re-parsing every row of the biggest table. What JSONB
+	 * drops - original key order, whitespace, duplicate keys - is already gone by the time
+	 * a log row is written: the payload went through json_decode, the sanitizer and
+	 * json_encode. Only the key order shown in a detail changes.
 	 */
-	private function resolveType(string $type, array $options, bool $isPostgres): string
+	private function resolveType(string $type, bool $isPostgres): string
 	{
 		if (!$isPostgres) {
 			return $type;
@@ -159,7 +161,7 @@ class PrintSchemaCommand extends Command
 		return match (true) {
 			$type === Types::DATETIME_MUTABLE => Types::DATETIMETZ_MUTABLE,
 			$type === Types::DATETIME_IMMUTABLE => Types::DATETIMETZ_IMMUTABLE,
-			$type === Types::JSON && !empty($options['jsonb']) && Type::hasType('jsonb') => 'jsonb',
+			$type === Types::JSON => Type::hasType('jsonb') ? 'jsonb' : $type,
 			default => $type,
 		};
 	}

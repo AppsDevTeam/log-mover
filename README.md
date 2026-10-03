@@ -109,7 +109,9 @@ compression and retention policies where `hot`/`retention` are set.
 - **The id is not generated** — the mover brings it.
 - **Time is `TIMESTAMP(6) WITH TIME ZONE`.** DBAL would declare `TIMESTAMP(0)` and
   silently round away the milliseconds a request logger writes.
-- **JSONB** where the entity mapping asks for it (`options: ['jsonb' => true]`).
+- **JSON is always JSONB** on PostgreSQL — payloads are searched during incidents and
+  JSONB can be indexed (GIN) and queried with `@>`. What it drops (key order, whitespace,
+  duplicate keys) is already gone after the logger's decode → sanitize → encode.
 - On a hypertable the primary key is `(id, created_at)` — TimescaleDB requires the
   partitioning column in every unique key.
 
